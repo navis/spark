@@ -253,7 +253,11 @@ class HiveCompatibilitySuite extends HiveQueryFileTest with BeforeAndAfter {
     "load_dyn_part14.*", // These work alone but fail when run with other tests...
 
     // the answer is sensitive for jdk version
-    "udf_java_method"
+    "udf_java_method",
+
+    // It contains the window function
+    "subquery_in",
+    "subquery_notin"
   ) ++ HiveShim.compatibilityBlackList
 
   /**
@@ -1006,5 +1010,5 @@ class HiveCompatibilitySuite extends HiveQueryFileTest with BeforeAndAfter {
     "view",
     "view_cast",
     "view_inputs"
-  )
+  ) ++ HiveShim.compatibilityWhiteList
 }
