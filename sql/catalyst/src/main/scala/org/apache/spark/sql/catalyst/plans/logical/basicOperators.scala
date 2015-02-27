@@ -109,7 +109,7 @@ case class Join(
 
   override def output: Seq[Attribute] = {
     joinType match {
-      case LeftSemi =>
+      case _: LeftSemiType =>
         left.output
       case LeftOuter =>
         left.output ++ right.output.map(_.withNullability(true))
@@ -337,6 +337,11 @@ case class Sample(
     child: LogicalPlan) extends UnaryNode {
 
   override def output: Seq[Attribute] = child.output
+}
+
+case class Exists(left: LogicalPlan, right: LogicalPlan, exist: Boolean) extends BinaryNode {
+  override def output = Nil
+  override lazy val resolved = false
 }
 
 case class Distinct(child: LogicalPlan) extends UnaryNode {

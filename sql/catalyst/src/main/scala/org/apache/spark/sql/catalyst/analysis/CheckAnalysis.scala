@@ -19,6 +19,8 @@ package org.apache.spark.sql.catalyst.analysis
 
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.planning.ExtractEquiJoinKeys
+import org.apache.spark.sql.catalyst.plans.{LeftSemiType, LeftSemiNotExist, LeftSemiExist}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.types._
 
@@ -131,6 +133,12 @@ trait CheckAnalysis {
               s"""Only a single table generating function is allowed in a SELECT clause, found:
                  | ${exprs.map(_.prettyString).mkString(",")}""".stripMargin)
 
+          // We assume the `[NOT] EXISTS` only support the equi-join
+          // TODO can we support the non-equi-join as well? performance concern?
+          case o @ Join(_, _, LeftSemiExist | LeftSemiNotExist, _)
+            if ExtractEquiJoinKeys.unapply(o).isEmpty =>
+            failAnalysis(
+              s"condition $o doens't contain any equi-join key")
 
           case _ => // Analysis successful!
         }
