@@ -340,7 +340,7 @@ case class Sample(
 }
 
 case class Exists(left: LogicalPlan, right: LogicalPlan, exist: Boolean) extends BinaryNode {
-  override def output = Nil
+  override def output: Seq[Attribute] = Nil
   override lazy val resolved = false
 }
 
