@@ -339,14 +339,31 @@ case class Sample(
   override def output: Seq[Attribute] = child.output
 }
 
-case class Exists(left: LogicalPlan, right: LogicalPlan, positive: Boolean) extends BinaryNode {
+// Exists, InSubquery & InFilter are used for subquery in WHERE clause ONLY
+case class Exists(
+    left: SubqueryConjunction,
+    right: LogicalPlan,
+    positive: Boolean) extends BinaryNode {
   override def output: Seq[Attribute] = Nil
+
   override lazy val resolved = false
 }
 
-case class InSubquery(left: Filter, right: LogicalPlan, positive: Boolean)
-    extends BinaryNode {
+case class InSubquery(left: SubqueryConjunction, right: LogicalPlan, positive: Boolean)
+  extends BinaryNode {
   override def output: Seq[Attribute] = Nil
+
+  override lazy val resolved = false
+}
+
+// This is only for connect the conjunction and subquery in WHERE clause
+// And only used within [[Exists]] and [[InSubquery]], as we want to the
+// attribute resolved before mapping the Exists or InSubquery to Left Semi Join
+case class SubqueryConjunction(child: LogicalPlan,
+    key: Option[Expression] = None,
+    condition: Option[Expression] = None) extends UnaryNode {
+  override def output: Seq[Attribute] = Nil
+
   override lazy val resolved = false
 }
 
