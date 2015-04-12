@@ -362,9 +362,7 @@ case class InSubquery(left: SubqueryConjunction, right: LogicalPlan, positive: B
 case class SubqueryConjunction(child: LogicalPlan,
     key: Option[Expression] = None,
     condition: Option[Expression] = None) extends UnaryNode {
-  override def output: Seq[Attribute] = Nil
-
-  override lazy val resolved = false
+  override def output: Seq[Attribute] = child.output
 }
 
 case class Distinct(child: LogicalPlan) extends UnaryNode {
