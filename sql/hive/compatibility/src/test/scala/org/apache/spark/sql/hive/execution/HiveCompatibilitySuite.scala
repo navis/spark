@@ -253,7 +253,11 @@ class HiveCompatibilitySuite extends HiveQueryFileTest with BeforeAndAfter {
     "load_dyn_part14.*", // These work alone but fail when run with other tests...
 
     // the answer is sensitive for jdk version
-    "udf_java_method"
+    "udf_java_method",
+
+    // It contains the window function
+    "subquery_in",
+    "subquery_notin"
   ) ++ HiveShim.compatibilityBlackList
 
   /**
@@ -795,10 +799,6 @@ class HiveCompatibilitySuite extends HiveQueryFileTest with BeforeAndAfter {
     "stats_empty_partition",
     "stats_publisher_error_1",
     "subq2",
-    "subquery_exists",
-    "subquery_in",
-    "subquery_notexists",
-    "subquery_notin",
     "tablename_with_select",
     "timestamp_1",
     "timestamp_2",
