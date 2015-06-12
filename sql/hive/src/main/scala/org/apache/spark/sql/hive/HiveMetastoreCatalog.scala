@@ -41,6 +41,8 @@ import org.apache.spark.sql.sources.{CreateTableUsingAsSelect, LogicalRelation, 
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{AnalysisException, SQLContext, SaveMode, sources}
 
+import scala.collection.immutable
+
 /* Implicit conversions */
 import scala.collection.JavaConversions._
 
@@ -670,7 +672,7 @@ private[hive] case class MetastoreRelation
     new Partition(hiveQlTable, tPartition)
   }
 
-  @transient override lazy val statistics: Statistics = Statistics(
+  override def statistics(conf: immutable.Map[String, String]): Statistics = Statistics(
     sizeInBytes = {
       val totalSize = hiveQlTable.getParameters.get(StatsSetupConst.TOTAL_SIZE)
       val rawDataSize = hiveQlTable.getParameters.get(StatsSetupConst.RAW_DATA_SIZE)

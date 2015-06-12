@@ -37,7 +37,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case ExtractEquiJoinKeys(jt: LeftSemiType, leftKeys, rightKeys, condition, left, right)
         if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
-          right.statistics.sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold =>
+          right.statistics(sqlContext.conf.getAllConfs).sizeInBytes <=
+            sqlContext.conf.autoBroadcastJoinThreshold =>
         val semiJoin = joins.BroadcastLeftSemiJoinHash(
           leftKeys, rightKeys, planLater(left), planLater(right), jt)
         condition.map(Filter(_, semiJoin)).getOrElse(semiJoin) :: Nil
@@ -50,18 +51,6 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case logical.Join(left, right, jt: LeftSemiType, condition) =>
         joins.LeftSemiJoinBNL(planLater(left), planLater(right), condition, jt) :: Nil
       case _ => Nil
-    }
-  }
-
-  /**
-   * Matches a plan whose output should be small enough to be used in broadcast join.
-   */
-  object CanBroadcast {
-    def unapply(plan: LogicalPlan): Option[LogicalPlan] = plan match {
-      case BroadcastHint(p) => Some(p)
-      case p if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
-        p.statistics.sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold => Some(p)
-      case _ => None
     }
   }
 
@@ -79,6 +68,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
    * will instead be used to decide the build side in a [[joins.ShuffledHashJoin]].
    */
   object HashJoin extends Strategy with PredicateHelper {
+
+    def conf: Map[String, String] = sqlContext.conf.getAllConfs
 
     private[this] def makeBroadcastHashJoin(
         leftKeys: Seq[Expression],
@@ -109,7 +100,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
 
       case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, right) =>
         val buildSide =
-          if (right.statistics.sizeInBytes <= left.statistics.sizeInBytes) {
+          if (right.statistics(conf).sizeInBytes <= left.statistics(conf).sizeInBytes) {
             joins.BuildRight
           } else {
             joins.BuildLeft
@@ -133,6 +124,18 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
           leftKeys, rightKeys, joinType, condition, planLater(left), planLater(right)) :: Nil
 
       case _ => Nil
+    }
+
+    /**
+     * Matches a plan whose output should be small enough to be used in broadcast join.
+     */
+    object CanBroadcast {
+      def unapply(plan: LogicalPlan): Option[LogicalPlan] = plan match {
+        case BroadcastHint(p) => Some(p)
+        case p if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
+          p.statistics(conf).sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold => Some(p)
+        case _ => None
+      }
     }
   }
 
@@ -196,10 +199,13 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   }
 
   object BroadcastNestedLoopJoin extends Strategy {
+
+    lazy val conf: Map[String, String] = sqlContext.conf.getAllConfs
+
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.Join(left, right, joinType, condition) =>
         val buildSide =
-          if (right.statistics.sizeInBytes <= left.statistics.sizeInBytes) {
+          if (right.statistics(conf).sizeInBytes <= left.statistics(conf).sizeInBytes) {
             joins.BuildRight
           } else {
             joins.BuildLeft

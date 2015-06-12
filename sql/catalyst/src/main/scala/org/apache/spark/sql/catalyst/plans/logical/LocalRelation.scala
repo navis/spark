@@ -21,6 +21,8 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow, analysis}
 import org.apache.spark.sql.types.{StructField, StructType}
 
+import scala.collection.immutable
+
 object LocalRelation {
   def apply(output: Attribute*): LocalRelation = new LocalRelation(output)
 
@@ -55,6 +57,6 @@ case class LocalRelation(output: Seq[Attribute], data: Seq[InternalRow] = Nil)
     case _ => false
   }
 
-  override lazy val statistics =
+  override def statistics(conf: immutable.Map[String, String]): Statistics =
     Statistics(sizeInBytes = output.map(_.dataType.defaultSize).sum * data.length)
 }

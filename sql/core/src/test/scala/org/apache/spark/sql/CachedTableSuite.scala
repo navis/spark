@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql
 
+import scala.collection.immutable
 import scala.concurrent.duration._
 import scala.language.{implicitConversions, postfixOps}
 
@@ -261,7 +262,7 @@ class CachedTableSuite extends QueryTest {
     ctx.table("testData").queryExecution.withCachedData.collect {
       case cached: InMemoryRelation =>
         val actualSizeInBytes = (1 to 100).map(i => INT.defaultSize + i.toString.length + 4).sum
-        assert(cached.statistics.sizeInBytes === actualSizeInBytes)
+        assert(cached.statistics(immutable.Map.empty).sizeInBytes === actualSizeInBytes)
     }
   }
 

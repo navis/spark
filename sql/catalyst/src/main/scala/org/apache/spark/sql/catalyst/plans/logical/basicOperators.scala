@@ -17,10 +17,13 @@
 
 package org.apache.spark.sql.catalyst.plans.logical
 
+import org.apache.spark.sql.catalyst.CatalystConf
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.types._
 import org.apache.spark.util.collection.OpenHashSet
+
+import scala.collection.immutable
 
 case class Project(projectList: Seq[NamedExpression], child: LogicalPlan) extends UnaryNode {
   override def output: Seq[Attribute] = projectList.map(_.toAttribute)
@@ -96,8 +99,8 @@ case class Union(left: LogicalPlan, right: LogicalPlan) extends BinaryNode {
     childrenResolved &&
     left.output.zip(right.output).forall { case (l, r) => l.dataType == r.dataType }
 
-  override def statistics: Statistics = {
-    val sizeInBytes = left.statistics.sizeInBytes + right.statistics.sizeInBytes
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
+    val sizeInBytes = left.statistics(conf).sizeInBytes + right.statistics(conf).sizeInBytes
     Statistics(sizeInBytes = sizeInBytes)
   }
 }
@@ -125,9 +128,36 @@ case class Join(
 
   private def selfJoinResolved: Boolean = left.outputSet.intersect(right.outputSet).isEmpty
 
-  // Joins are only resolved if they don't introduce ambiguious expression ids.
+  // Joins are only resolved if they don't introduce ambiguous expression ids.
   override lazy val resolved: Boolean = {
     childrenResolved && !expressions.exists(!_.resolved) && selfJoinResolved
+  }
+
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
+    val sizeLeft: BigInt = left.statistics(conf).sizeInBytes
+    val sizeRight: BigInt = right.statistics(conf).sizeInBytes
+    val sizeCurrent: Long =
+      if (condition.isEmpty) {
+        (sizeLeft * sizeRight).toLong
+      } else {
+        val selectionFactor = conf.getOrElse(CatalystConf.JOIN_SELECTION_FACTOR, "0.2F").toFloat
+        joinType match {
+          case Inner => ((sizeLeft + sizeRight).longValue * selectionFactor).toLong
+          case LeftSemi => (sizeLeft.longValue * selectionFactor).toLong
+          case LeftOuter =>
+            ((sizeLeft + sizeRight).longValue * selectionFactor +
+              sizeLeft.longValue * (1 - selectionFactor)).toLong
+          case RightOuter =>
+            ((sizeLeft + sizeRight).longValue * selectionFactor +
+              sizeRight.longValue * (1 - selectionFactor)).toLong
+          case FullOuter =>
+            ((sizeLeft + sizeRight).longValue * selectionFactor +
+              sizeLeft.longValue * (1 - selectionFactor) +
+              sizeRight.longValue * (1 - selectionFactor)).toLong
+          case _ => (sizeLeft * sizeRight).toLong
+        }
+      }
+    Statistics(sizeInBytes = if (sizeCurrent > 0) sizeCurrent else Long.MaxValue)
   }
 }
 
@@ -141,6 +171,11 @@ case class BroadcastHint(child: LogicalPlan) extends UnaryNode {
 
 case class Except(left: LogicalPlan, right: LogicalPlan) extends BinaryNode {
   override def output: Seq[Attribute] = left.output
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
+    val selectionFactor = conf.getOrElse(CatalystConf.EXCEPT_SELECTION_FACTOR, "0.2F").toFloat
+    Statistics(sizeInBytes =
+      (left.statistics(conf).sizeInBytes.longValue * (1 - selectionFactor)).toLong)
+  }
 }
 
 case class InsertIntoTable(
@@ -238,8 +273,8 @@ case class Expand(
     groupByExprs: Seq[Expression],
     gid: Attribute,
     child: LogicalPlan) extends UnaryNode {
-  override def statistics: Statistics = {
-    val sizeInBytes = child.statistics.sizeInBytes * projections.length
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
+    val sizeInBytes = child.statistics(conf).sizeInBytes * projections.length
     Statistics(sizeInBytes = sizeInBytes)
   }
 
@@ -370,7 +405,7 @@ case class Rollup(
 case class Limit(limitExpr: Expression, child: LogicalPlan) extends UnaryNode {
   override def output: Seq[Attribute] = child.output
 
-  override lazy val statistics: Statistics = {
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
     val limit = limitExpr.eval(null).asInstanceOf[Int]
     val sizeInBytes = (limit: Long) * output.map(a => a.dataType.defaultSize).sum
     Statistics(sizeInBytes = sizeInBytes)
@@ -458,9 +493,15 @@ case object OneRowRelation extends LeafNode {
    *
    * [[LeafNode]]s must override this.
    */
-  override def statistics: Statistics = Statistics(sizeInBytes = 1)
+  override def statistics(conf: immutable.Map[String, String]): Statistics =
+    Statistics(sizeInBytes = 1)
 }
 
 case class Intersect(left: LogicalPlan, right: LogicalPlan) extends BinaryNode {
   override def output: Seq[Attribute] = left.output
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
+    val selectionFactor = conf.getOrElse(CatalystConf.INTERSECT_SELECTION_FACTOR, "0.2F").toFloat
+    Statistics(sizeInBytes = math.max(0L,
+      (left.statistics(conf).sizeInBytes.longValue * selectionFactor).toLong))
+  }
 }

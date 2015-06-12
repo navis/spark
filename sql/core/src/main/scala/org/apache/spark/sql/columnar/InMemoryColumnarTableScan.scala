@@ -19,6 +19,7 @@ package org.apache.spark.sql.columnar
 
 import java.nio.ByteBuffer
 
+import scala.collection.immutable
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.rdd.RDD
@@ -76,14 +77,9 @@ private[sql] case class InMemoryRelation(
   // Statistics propagation contracts:
   // 1. Non-null `_statistics` must reflect the actual statistics of the underlying data
   // 2. Only propagate statistics when `_statistics` is non-null
-  private def statisticsToBePropagated = if (_statistics == null) {
-    val updatedStats = statistics
-    if (_statistics == null) null else updatedStats
-  } else {
-    _statistics
-  }
+  private def statisticsToBePropagated = _statistics
 
-  override def statistics: Statistics = {
+  override def statistics(conf: immutable.Map[String, String]): Statistics = {
     if (_statistics == null) {
       if (batchStats.value.isEmpty) {
         // Underlying columnar RDD hasn't been materialized, no useful statistics information

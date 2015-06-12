@@ -34,6 +34,8 @@ import org.apache.spark.sql.catalyst.plans.logical.{LeafNode, LogicalPlan, Stati
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, SQLContext}
 
+import scala.collection.immutable
+
 /**
  * Relation that consists of data stored in a Parquet columnar format.
  *
@@ -89,7 +91,8 @@ private[sql] case class ParquetRelation(
   }
 
   // TODO: Use data from the footers.
-  override lazy val statistics = Statistics(sizeInBytes = sqlContext.conf.defaultSizeInBytes)
+  override def statistics(conf: immutable.Map[String, String]): Statistics =
+    Statistics(sizeInBytes = sqlContext.conf.defaultSizeInBytes)
 }
 
 private[sql] object ParquetRelation {

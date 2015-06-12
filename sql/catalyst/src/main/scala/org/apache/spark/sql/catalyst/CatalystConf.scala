@@ -17,8 +17,17 @@
 
 package org.apache.spark.sql.catalyst
 
+import scala.collection.immutable
+
 private[spark] trait CatalystConf {
   def caseSensitiveAnalysis: Boolean
+  def getAllConfs: immutable.Map[String, String]
+}
+
+object CatalystConf {
+  val JOIN_SELECTION_FACTOR = "spark.sql.join.selectionFactor"
+  val EXCEPT_SELECTION_FACTOR = "spark.sql.except.selectionFactor"
+  val INTERSECT_SELECTION_FACTOR = "spark.sql.intersect.selectionFactor"
 }
 
 /**
@@ -29,7 +38,10 @@ object EmptyConf extends CatalystConf {
   override def caseSensitiveAnalysis: Boolean = {
     throw new UnsupportedOperationException
   }
+  def getAllConfs: immutable.Map[String, String] = immutable.Map.empty
 }
 
 /** A CatalystConf that can be used for local testing. */
-case class SimpleCatalystConf(caseSensitiveAnalysis: Boolean) extends CatalystConf
+case class SimpleCatalystConf(caseSensitiveAnalysis: Boolean) extends CatalystConf {
+  override def getAllConfs: Map[String, String] = immutable.Map.empty
+}

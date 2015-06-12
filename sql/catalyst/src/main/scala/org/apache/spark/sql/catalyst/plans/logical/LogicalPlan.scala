@@ -25,6 +25,8 @@ import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.trees.TreeNode
 import org.apache.spark.sql.catalyst.trees
 
+import scala.collection.immutable
+
 
 abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
   self: Product =>
@@ -36,11 +38,11 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
    *
    * [[LeafNode]]s must override this.
    */
-  def statistics: Statistics = {
+  def statistics(conf: immutable.Map[String, String]): Statistics = {
     if (children.size == 0) {
       throw new UnsupportedOperationException(s"LeafNode $nodeName must implement statistics.")
     }
-    Statistics(sizeInBytes = children.map(_.statistics.sizeInBytes).product)
+    Statistics(sizeInBytes = children.map(_.statistics(conf).sizeInBytes).product)
   }
 
   /**
