@@ -27,6 +27,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.{QueryTest, TestData}
 import org.apache.spark.storage.StorageLevel.MEMORY_ONLY
 
+import scala.collection.immutable
+
 class InMemoryColumnarQuerySuite extends QueryTest {
   // Make sure the tables are loaded.
   TestData
@@ -44,7 +46,7 @@ class InMemoryColumnarQuerySuite extends QueryTest {
       .toDF().registerTempTable("sizeTst")
     cacheTable("sizeTst")
     assert(
-      table("sizeTst").queryExecution.analyzed.statistics.sizeInBytes >
+      table("sizeTst").queryExecution.analyzed.statistics(immutable.Map.empty).sizeInBytes >
         conf.autoBroadcastJoinThreshold)
   }
 

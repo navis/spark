@@ -20,6 +20,8 @@ import org.apache.spark.sql.catalyst.analysis.MultiInstanceRelation
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, AttributeMap}
 import org.apache.spark.sql.catalyst.plans.logical.{Statistics, LeafNode, LogicalPlan}
 
+import scala.collection.immutable
+
 /**
  * Used to link a [[BaseRelation]] in to a logical query plan.
  */
@@ -44,7 +46,8 @@ private[sql] case class LogicalRelation(relation: BaseRelation)
     case _ => false
   }
 
-  @transient override lazy val statistics: Statistics = Statistics(
+  @transient
+  override def statistics(conf: immutable.Map[String, String]): Statistics = Statistics(
     sizeInBytes = BigInt(relation.sizeInBytes)
   )
 

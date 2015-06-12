@@ -26,6 +26,8 @@ import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Statistics}
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.sql.{Row, SQLContext}
 
+import scala.collection.immutable
+
 /**
  * :: DeveloperApi ::
  */
@@ -83,7 +85,8 @@ private[sql] case class LogicalRDD(output: Seq[Attribute], rdd: RDD[Row])(sqlCon
     case _ => false
   }
 
-  @transient override lazy val statistics: Statistics = Statistics(
+  @transient
+  override def statistics(conf: immutable.Map[String, String]): Statistics = Statistics(
     // TODO: Instead of returning a default value here, find a way to return a meaningful size
     // estimate for RDDs. See PR 1238 for more discussions.
     sizeInBytes = BigInt(sqlContext.conf.defaultSizeInBytes)
@@ -110,7 +113,8 @@ case class LogicalLocalTable(output: Seq[Attribute], rows: Seq[Row])(sqlContext:
     case _ => false
   }
 
-  @transient override lazy val statistics: Statistics = Statistics(
+  @transient
+  override def statistics(conf: immutable.Map[String, String]): Statistics = Statistics(
     // TODO: Improve the statistics estimation.
     // This is made small enough so it can be broadcasted.
     sizeInBytes = sqlContext.conf.autoBroadcastJoinThreshold - 1

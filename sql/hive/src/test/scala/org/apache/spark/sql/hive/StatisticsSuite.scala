@@ -19,6 +19,7 @@ package org.apache.spark.sql.hive
 
 import org.scalatest.BeforeAndAfterAll
 
+import scala.collection.immutable
 import scala.reflect.ClassTag
 
 import org.apache.spark.sql.{Row, SQLConf, QueryTest}
@@ -72,7 +73,7 @@ class StatisticsSuite extends QueryTest with BeforeAndAfterAll {
 
   test("analyze MetastoreRelations") {
     def queryTotalSize(tableName: String): BigInt =
-      catalog.lookupRelation(Seq(tableName)).statistics.sizeInBytes
+      catalog.lookupRelation(Seq(tableName)).statistics(immutable.Map.empty).sizeInBytes
 
     // Non-partitioned table
     sql("CREATE TABLE analyzeTable (key STRING, value STRING)").collect()
@@ -129,7 +130,7 @@ class StatisticsSuite extends QueryTest with BeforeAndAfterAll {
   test("estimates the size of a test MetastoreRelation") {
     val df = sql("""SELECT * FROM src""")
     val sizes = df.queryExecution.analyzed.collect { case mr: MetastoreRelation =>
-      mr.statistics.sizeInBytes
+      mr.statistics(immutable.Map.empty).sizeInBytes
     }
     assert(sizes.size === 1, s"Size wrong for:\n ${df.queryExecution}")
     assert(sizes(0).equals(BigInt(5812)),
@@ -149,7 +150,8 @@ class StatisticsSuite extends QueryTest with BeforeAndAfterAll {
 
       // Assert src has a size smaller than the threshold.
       val sizes = df.queryExecution.analyzed.collect {
-        case r if ct.runtimeClass.isAssignableFrom(r.getClass) => r.statistics.sizeInBytes
+        case r if ct.runtimeClass.isAssignableFrom(r.getClass) =>
+          r.statistics(immutable.Map.empty).sizeInBytes
       }
       assert(sizes.size === 2 && sizes(0) <= conf.autoBroadcastJoinThreshold
         && sizes(1) <= conf.autoBroadcastJoinThreshold,
@@ -205,7 +207,7 @@ class StatisticsSuite extends QueryTest with BeforeAndAfterAll {
     val sizes = df.queryExecution.analyzed.collect {
       case r if implicitly[ClassTag[MetastoreRelation]].runtimeClass
         .isAssignableFrom(r.getClass) =>
-        r.statistics.sizeInBytes
+        r.statistics(immutable.Map.empty).sizeInBytes
     }
     assert(sizes.size === 2 && sizes(1) <= conf.autoBroadcastJoinThreshold
       && sizes(0) <= conf.autoBroadcastJoinThreshold,
