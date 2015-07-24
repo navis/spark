@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
+import java.sql.Timestamp
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedExpressionCode}
@@ -122,15 +124,35 @@ case class Subtract(left: Expression, right: Expression) extends BinaryArithmeti
   override def symbol: String = "-"
   override def decimalMethod: String = "$minus"
 
+  private def inputType: DataType = left.dataType
+
+  override def dataType: DataType = inputType match {
+    case TimestampType => LongType
+    case _ => inputType
+  }
+
   override lazy val resolved =
     childrenResolved && checkInputDataTypes().isSuccess && !DecimalType.isFixed(dataType)
 
   protected def checkTypesInternal(t: DataType) =
-    TypeUtils.checkForNumericExpr(t, "operator " + symbol)
+    inputType match {
+      case TimestampType => TypeCheckResult.TypeCheckSuccess
+      case _ => TypeUtils.checkForNumericExpr(t, "operator " + symbol)
+    }
 
-  private lazy val numeric = TypeUtils.getNumeric(dataType)
+  private lazy val numeric = TypeUtils.getNumeric(inputType)
 
-  protected override def nullSafeEval(input1: Any, input2: Any): Any = numeric.minus(input1, input2)
+  protected override def nullSafeEval(input1: Any, input2: Any): Any = {
+    inputType match {
+      case TimestampType =>
+        usToSeconds(input1.asInstanceOf[Long]) - usToSeconds(input2.asInstanceOf[Long])
+      case _ => numeric.minus(input1, input2)
+    }
+  }
+
+  private def usToSeconds(ts: Long): Long = {
+    math.floor(ts.toDouble / 1000000L).toLong
+  }
 }
 
 case class Multiply(left: Expression, right: Expression) extends BinaryArithmetic {

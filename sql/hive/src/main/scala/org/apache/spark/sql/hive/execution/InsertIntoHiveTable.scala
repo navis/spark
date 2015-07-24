@@ -19,12 +19,13 @@ package org.apache.spark.sql.hive.execution
 
 import java.util
 
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
 import org.apache.hadoop.hive.metastore.MetaStoreUtils
 import org.apache.hadoop.hive.ql.plan.TableDesc
 import org.apache.hadoop.hive.ql.{Context, ErrorMsg}
-import org.apache.hadoop.hive.serde2.Serializer
+import org.apache.hadoop.hive.serde2.{Deserializer, Serializer}
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption
 import org.apache.hadoop.hive.serde2.objectinspector._
 import org.apache.hadoop.mapred.{FileOutputFormat, JobConf}
@@ -50,13 +51,13 @@ case class InsertIntoHiveTable(
     ifNotExists: Boolean) extends UnaryNode with HiveInspectors {
 
   @transient val sc: HiveContext = sqlContext.asInstanceOf[HiveContext]
-  @transient lazy val outputClass = newSerializer(table.tableDesc).getSerializedClass
+  @transient lazy val outputClass = newSerializer(table.tableDesc, sc.hiveconf).getSerializedClass
   @transient private lazy val hiveContext = new Context(sc.hiveconf)
   @transient private lazy val catalog = sc.catalog
 
-  private def newSerializer(tableDesc: TableDesc): Serializer = {
+  private def newSerializer(tableDesc: TableDesc, conf: Configuration): Serializer = {
     val serializer = tableDesc.getDeserializerClass.newInstance().asInstanceOf[Serializer]
-    serializer.initialize(null, tableDesc.getProperties)
+    serializer.initialize(conf, tableDesc.getProperties)
     serializer
   }
 
@@ -86,10 +87,10 @@ case class InsertIntoHiveTable(
 
     // Note that this function is executed on executor side
     def writeToFile(context: TaskContext, iterator: Iterator[InternalRow]): Unit = {
-      val serializer = newSerializer(fileSinkConf.getTableInfo)
+      val serializer = newSerializer(fileSinkConf.getTableInfo, conf.value)
       val standardOI = ObjectInspectorUtils
         .getStandardObjectInspector(
-          fileSinkConf.getTableInfo.getDeserializer.getObjectInspector,
+          serializer.asInstanceOf[Deserializer].getObjectInspector,
           ObjectInspectorCopyOption.JAVA)
         .asInstanceOf[StructObjectInspector]
 
