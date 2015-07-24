@@ -22,14 +22,14 @@ import java.net.URI
 import java.util.{ArrayList => JArrayList, Map => JMap, List => JList, Set => JSet}
 
 import scala.collection.JavaConversions._
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.language.reflectiveCalls
 
-import org.apache.hadoop.fs.Path
-import org.apache.hadoop.hive.metastore.api.Database
+import org.apache.hadoop.fs.{FileStatus, FileSystem, Path}
+import org.apache.hadoop.hive.metastore.api.{StorageDescriptor, Database, FieldSchema}
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.metastore.TableType
-import org.apache.hadoop.hive.metastore.api
-import org.apache.hadoop.hive.metastore.api.FieldSchema
 import org.apache.hadoop.hive.ql.metadata
 import org.apache.hadoop.hive.ql.metadata.Hive
 import org.apache.hadoop.hive.ql.session.SessionState
@@ -272,6 +272,18 @@ private[hive] class ClientWrapper(
     client.alterTable(table.qualifiedName, qlTable)
   }
 
+  private def toHivePartition(values: Array[String], location: String, sd: StorageDescriptor):
+      HivePartition = {
+    HivePartition(
+      values = values,
+      storage = HiveStorageDescriptor(
+        location = location,
+        inputFormat = sd.getInputFormat,
+        outputFormat = sd.getOutputFormat,
+        serde = sd.getSerdeInfo.getSerializationLib,
+        serdeProperties = sd.getSerdeInfo.getParameters.toMap))
+  }
+
   private def toHivePartition(partition: metadata.Partition): HivePartition = {
     val apiPartition = partition.getTPartition
     HivePartition(
@@ -293,15 +305,61 @@ private[hive] class ClientWrapper(
     Option(qlPartition).map(toHivePartition)
   }
 
+  private val partCache: mutable.Map[String, (String, ArrayBuffer[(Array[String], String)])] =
+    new mutable.HashMap
+
   override def getAllPartitions(hTable: HiveTable): Seq[HivePartition] = withHiveState {
+    val start = System.currentTimeMillis()
     val qlTable = toQlTable(hTable)
-    val qlPartitions = version match {
-      case hive.v12 =>
-        client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsForPruner", qlTable)
-      case hive.v13 =>
-        client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsOf", qlTable)
+    var partitions: Seq[HivePartition] = null
+    if (hTable.isPartitioned && hTable.location.isDefined) {
+      val sd = qlTable.getTTable.getSd
+      val partitionCols = hTable.partitionColumns.map(c => c.name)
+
+      val tableLocString = hTable.location.get
+      val tableLoc = new Path(hTable.location.get)
+      val fs = tableLoc.getFileSystem(conf)
+
+      val summary = fs.getContentSummary(tableLoc)
+      val status = summary.getFileCount + ":" + summary.getDirectoryCount + ":" + summary.getLength
+
+      var cached = partCache.get(tableLocString)
+      if (cached.isEmpty || cached.get._1 != status) {
+        val seq = new Array[String](partitionCols.length)
+        cached = Some(status, next(0, seq, tableLoc, fs))
+        partCache.put(tableLocString, cached.get)
+      }
+      partitions = cached.get._2.map {
+        x: (Array[String], String) => toHivePartition(x._1, x._2, sd)
+      }
+    } else {
+      val qlPartitions = version match {
+        case hive.v12 =>
+          client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsForPruner", qlTable)
+        case hive.v13 =>
+          client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsOf", qlTable)
+      }
+      partitions = qlPartitions.toList.map(toHivePartition)
     }
-    qlPartitions.toSeq.map(toHivePartition)
+    logWarning("Took " + (System.currentTimeMillis() - start) + " msec, for " + hTable.name)
+    partitions
+  }
+
+  protected def next(index: Int, names: Array[String], path: Path, fs: FileSystem)
+      : ArrayBuffer[(Array[String], String)] = {
+    val result = new ArrayBuffer[(Array[String], String)]
+    val f = fs.listStatus(path)
+    if (f != null && f.nonEmpty) {
+      f.foreach ((s: FileStatus) => {
+        names(index) = s.getPath.getName.split("=")(1).toLowerCase
+        if (index + 1 == names.length) {
+          result.add((names.clone(), s.getPath.toString))
+        } else if (s.isDirectory) {
+          result.addAll(next(index + 1, names, s.getPath, fs))
+        }
+      })
+    }
+    result
   }
 
   override def listTables(dbName: String): Seq[String] = withHiveState {

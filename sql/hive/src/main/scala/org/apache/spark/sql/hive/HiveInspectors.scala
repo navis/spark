@@ -350,12 +350,12 @@ private[hive] trait HiveInspectors {
    * TODO: Consolidate all hive OI/data interface code.
    */
   protected def wrapperFor(oi: ObjectInspector): Any => Any = oi match {
-    case _: HiveCharObjectInspector =>
+    case _: JavaHiveCharObjectInspector =>
       (o: Any) =>
         val s = o.asInstanceOf[UTF8String].toString
         new HiveChar(s, s.size)
 
-    case _: HiveVarcharObjectInspector =>
+    case _: JavaHiveVarcharObjectInspector =>
       (o: Any) =>
         val s = o.asInstanceOf[UTF8String].toString
         new HiveVarchar(s, s.size)
