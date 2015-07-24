@@ -18,7 +18,6 @@
 package org.apache.spark.sql.catalyst.expressions
 
 import org.apache.spark.sql.catalyst.analysis.UnresolvedException
-import org.apache.spark.sql.catalyst.errors.TreeNodeException
 import org.apache.spark.sql.types._
 
 case class UnaryMinus(child: Expression) extends UnaryExpression {
@@ -131,8 +130,22 @@ case class Add(left: Expression, right: Expression) extends BinaryArithmetic {
 case class Subtract(left: Expression, right: Expression) extends BinaryArithmetic {
   override def symbol: String = "-"
 
-  lazy val numeric = dataType match {
+  private def inputType = left.dataType
+
+  override def dataType: DataType = {
+    if (!resolved) {
+      throw new UnresolvedException(this,
+        s"datatype. Can not resolve due to differing types ${left.dataType}, ${right.dataType}")
+    }
+    inputType match {
+      case t: TimestampType => LongType
+      case _ => inputType
+    }
+  }
+
+  lazy val numeric = inputType match {
     case n: NumericType => n.numeric.asInstanceOf[Numeric[Any]]
+    case t: TimestampType => usToSeconds(t.asInstanceOf[Long]).asInstanceOf[Numeric[Any]]
     case other => sys.error(s"Type $other does not support numeric operations")
   }
 
@@ -148,6 +161,10 @@ case class Subtract(left: Expression, right: Expression) extends BinaryArithmeti
         numeric.minus(evalE1, evalE2)
       }
     }
+  }
+
+  private def usToSeconds(ts: Long): Long = {
+    math.floor(ts.toDouble / 1000000L).toLong
   }
 }
 

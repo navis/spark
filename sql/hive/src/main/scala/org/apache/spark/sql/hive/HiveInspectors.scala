@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.hive
 
-import org.apache.hadoop.hive.common.`type`.{HiveDecimal, HiveVarchar}
+import org.apache.hadoop.hive.common.`type`.{HiveChar, HiveDecimal, HiveVarchar}
 import org.apache.hadoop.hive.serde2.objectinspector.primitive._
 import org.apache.hadoop.hive.serde2.objectinspector.{StructField => HiveStructField, _}
 import org.apache.hadoop.hive.serde2.{io => hiveIo}
@@ -242,6 +242,8 @@ private[hive] trait HiveInspectors {
     case coi: ConstantObjectInspector if coi.getWritableConstantValue == null => null
     case poi: WritableConstantStringObjectInspector =>
       UTF8String(poi.getWritableConstantValue.toString)
+    case poi: WritableConstantHiveCharObjectInspector =>
+      UTF8String(poi.getWritableConstantValue.getHiveChar.getValue)
     case poi: WritableConstantHiveVarcharObjectInspector =>
       UTF8String(poi.getWritableConstantValue.getHiveVarchar.getValue)
     case poi: WritableConstantHiveDecimalObjectInspector =>
@@ -285,6 +287,10 @@ private[hive] trait HiveInspectors {
     case poi: VoidObjectInspector => null // always be null for void object inspector
     case pi: PrimitiveObjectInspector => pi match {
       // We think HiveVarchar is also a String
+      case hvoi: HiveCharObjectInspector if hvoi.preferWritable() =>
+        UTF8String(hvoi.getPrimitiveWritableObject(data).getHiveChar.getValue)
+      case hvoi: HiveCharObjectInspector =>
+        UTF8String(hvoi.getPrimitiveJavaObject(data).getValue)
       case hvoi: HiveVarcharObjectInspector if hvoi.preferWritable() =>
         UTF8String(hvoi.getPrimitiveWritableObject(data).getHiveVarchar.getValue)
       case hvoi: HiveVarcharObjectInspector =>
@@ -344,7 +350,12 @@ private[hive] trait HiveInspectors {
    * TODO: Consolidate all hive OI/data interface code.
    */
   protected def wrapperFor(oi: ObjectInspector): Any => Any = oi match {
-    case _: JavaHiveVarcharObjectInspector =>
+    case _: HiveCharObjectInspector =>
+      (o: Any) =>
+        val s = o.asInstanceOf[UTF8String].toString
+        new HiveChar(s, s.size)
+
+    case _: HiveVarcharObjectInspector =>
       (o: Any) =>
         val s = o.asInstanceOf[UTF8String].toString
         new HiveVarchar(s, s.size)

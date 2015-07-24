@@ -177,7 +177,8 @@ case class AttributeReference(
   def sameRef(other: AttributeReference): Boolean = this.exprId == other.exprId
 
   override def equals(other: Any): Boolean = other match {
-    case ar: AttributeReference => name == ar.name && exprId == ar.exprId && dataType == ar.dataType
+    case ar: AttributeReference =>
+      name.toLowerCase == ar.name.toLowerCase && exprId == ar.exprId && dataType == ar.dataType
     case _ => false
   }
 
