@@ -36,6 +36,7 @@ import org.apache.spark.Logging
 import org.apache.spark.rdd.{EmptyRDD, HadoopRDD, RDD, UnionRDD}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.util.DateUtils
+import org.apache.spark.sql.types.UTF8String
 import org.apache.spark.util.Utils
 
 /**
@@ -358,7 +359,7 @@ private[hive] object HadoopTableReader extends HiveInspectors with Logging {
           (value: Any, row: MutableRow, ordinal: Int) => row.setDouble(ordinal, oi.get(value))
         case oi: HiveCharObjectInspector =>
           (value: Any, row: MutableRow, ordinal: Int) =>
-            row.update(ordinal, UTF8String.fromString(oi.getPrimitiveJavaObject(value).getValue))
+            row.update(ordinal, UTF8String(oi.getPrimitiveJavaObject(value).getValue))
         case oi: HiveVarcharObjectInspector =>
           (value: Any, row: MutableRow, ordinal: Int) =>
             row.setString(ordinal, oi.getPrimitiveJavaObject(value).getValue)

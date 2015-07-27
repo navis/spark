@@ -339,7 +339,7 @@ private[hive] class ClientWrapper(
         case hive.v13 =>
           client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsOf", qlTable)
       }
-      partitions = qlPartitions.toList.map(toHivePartition)
+      partitions = qlPartitions.toSeq.map(toHivePartition)
     }
     logWarning("Took " + (System.currentTimeMillis() - start) + " msec, for " + hTable.name)
     partitions

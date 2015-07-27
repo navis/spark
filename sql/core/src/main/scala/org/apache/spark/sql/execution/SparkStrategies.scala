@@ -83,15 +83,11 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
     }
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-      case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, right)
-        if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
-           right.statistics.sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold =>
-        makeBroadcastHashJoin(leftKeys, rightKeys, left, right, condition, joins.BuildRight)
+      case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, CanBroadcast(right))
+        => makeBroadcastHashJoin(leftKeys, rightKeys, left, right, condition, joins.BuildRight)
 
-      case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, right)
-        if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
-           left.statistics.sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold =>
-          makeBroadcastHashJoin(leftKeys, rightKeys, left, right, condition, joins.BuildLeft)
+      case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, CanBroadcast(left), right)
+        => makeBroadcastHashJoin(leftKeys, rightKeys, left, right, condition, joins.BuildLeft)
 
       // If the sort merge join option is set, we want to use sort merge join prior to hashjoin
       // for now let's support inner join first, then add outer join
@@ -124,7 +120,6 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
      */
     object CanBroadcast {
       def unapply(plan: LogicalPlan): Option[LogicalPlan] = plan match {
-        case BroadcastHint(p) => Some(p)
         case p if sqlContext.conf.autoBroadcastJoinThreshold > 0 &&
           p.statistics(conf).sizeInBytes <= sqlContext.conf.autoBroadcastJoinThreshold => Some(p)
         case _ => None
