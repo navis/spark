@@ -325,37 +325,36 @@ private[hive] class ClientWrapper(
 
       var cached = partCache.get(tableLocString)
       if (cached.isEmpty || cached.get._1 != status) {
-        val seq = new Array[String](partitionCols.length)
-        cached = Some(status, next(0, seq, tableLoc, fs))
+        val values = new Array[String](partitionCols.length)
+        cached = Some(status, next(0, values, tableLoc, fs))
         partCache.put(tableLocString, cached.get)
       }
       partitions = cached.get._2.map {
         x: (Array[String], String) => toHivePartition(x._1, x._2, sd)
       }
     } else {
-      val qlPartitions = version match {
-        case hive.v12 =>
-          client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsForPruner", qlTable)
-        case hive.v13 =>
-          client.call[metadata.Table, JSet[metadata.Partition]]("getAllPartitionsOf", qlTable)
+      val methodName = version match {
+        case hive.v12 => "getAllPartitionsForPruner"
+        case hive.v13 => "getAllPartitionsOf"
       }
+      val qlPartitions = client.call[metadata.Table, JSet[metadata.Partition]](methodName, qlTable)
       partitions = qlPartitions.toSeq.map(toHivePartition)
     }
     logWarning("Took " + (System.currentTimeMillis() - start) + " msec, for " + hTable.name)
     partitions
   }
 
-  protected def next(index: Int, names: Array[String], path: Path, fs: FileSystem)
+  protected def next(index: Int, values: Array[String], path: Path, fs: FileSystem)
       : ArrayBuffer[(Array[String], String)] = {
     val result = new ArrayBuffer[(Array[String], String)]
     val f = fs.listStatus(path)
     if (f != null && f.nonEmpty) {
       f.foreach ((s: FileStatus) => {
-        names(index) = s.getPath.getName.split("=")(1).toLowerCase
-        if (index + 1 == names.length) {
-          result.add((names.clone(), s.getPath.toString))
+        values(index) = s.getPath.getName.split("=")(1).trim
+        if (index + 1 == values.length) {
+          result.add((values.clone(), s.getPath.toString))
         } else if (s.isDirectory) {
-          result.addAll(next(index + 1, names, s.getPath, fs))
+          result.addAll(next(index + 1, values, s.getPath, fs))
         }
       })
     }
