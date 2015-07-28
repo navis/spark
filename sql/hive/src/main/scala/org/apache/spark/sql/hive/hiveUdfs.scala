@@ -56,7 +56,10 @@ private[hive] abstract class HiveFunctionRegistry
 
     val functionClassName = functionInfo.getFunctionClass.getName
 
-    if (classOf[UDF].isAssignableFrom(functionInfo.getFunctionClass)) {
+    if (classOf[GenericUDFMacro].isAssignableFrom(functionInfo.getFunctionClass)) {
+      HiveGenericUdf(
+        new HiveFunctionWrapper(functionClassName, functionInfo.getGenericUDF), children)
+    } else if (classOf[UDF].isAssignableFrom(functionInfo.getFunctionClass)) {
       HiveSimpleUdf(new HiveFunctionWrapper(functionClassName), children)
     } else if (classOf[GenericUDF].isAssignableFrom(functionInfo.getFunctionClass)) {
       HiveGenericUdf(new HiveFunctionWrapper(functionClassName), children)

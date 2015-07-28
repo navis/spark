@@ -18,8 +18,9 @@
 package org.apache.spark.sql.hive
 
 import java.rmi.server.UID
+import java.util
 import java.util.{Properties, ArrayList => JArrayList}
-import java.io.{OutputStream, InputStream}
+import java.io._
 
 import scala.collection.JavaConversions._
 import scala.language.implicitConversions
@@ -44,7 +45,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.{HiveDecimalObjec
 import org.apache.hadoop.hive.serde2.objectinspector.{ObjectInspector, ObjectInspectorConverters, PrimitiveObjectInspector}
 import org.apache.hadoop.hive.serde2.typeinfo.{DecimalTypeInfo, TypeInfo, TypeInfoFactory}
 import org.apache.hadoop.hive.serde2.{ColumnProjectionUtils, Deserializer, io => hiveIo}
-import org.apache.hadoop.io.{NullWritable, Writable}
+import org.apache.hadoop.io.{IOUtils, NullWritable, Writable}
 import org.apache.hadoop.mapred.InputFormat
 import org.apache.hadoop.{io => hadoopIo}
 
@@ -60,8 +61,8 @@ import org.apache.spark.util.Utils._
  *
  * @param functionClassName UDF class name
  */
-private[hive] case class HiveFunctionWrapper(var functionClassName: String)
-  extends java.io.Externalizable {
+private[hive] case class HiveFunctionWrapper(var functionClassName: String,
+  var instance: AnyRef = null) extends java.io.Externalizable with Logging {
 
   // for Serialization
   def this() = this(null)
@@ -72,9 +73,17 @@ private[hive] case class HiveFunctionWrapper(var functionClassName: String)
       in: InputStream,
       clazz: Class[_]): T = {
     val inp = new Input(in)
-    val t: T = kryo.readObject(inp,clazz).asInstanceOf[T]
-    inp.close()
-    t
+    try {
+      val t: T = kryo.readObject(inp, clazz).asInstanceOf[T]
+      inp.close()
+      t
+    }
+    catch {
+      case t => {
+        logWarning("Failed in pos " + inp.position())
+        throw t
+      }
+    }
   }
 
   @transient
@@ -96,8 +105,6 @@ private[hive] case class HiveFunctionWrapper(var functionClassName: String)
     serializeObjectByKryo(Utilities.runtimeSerializationKryo.get(), function, out)
   }
 
-  private var instance: AnyRef = null
-
   def writeExternal(out: java.io.ObjectOutput) {
     // output the function name
     out.writeUTF(functionClassName)
@@ -107,7 +114,7 @@ private[hive] case class HiveFunctionWrapper(var functionClassName: String)
     if (instance != null) {
       // Some of the UDF are serializable, but some others are not
       // Hive Utilities can handle both cases
-      val baos = new java.io.ByteArrayOutputStream()
+      val baos = new ByteArrayOutputStream()
       serializePlan(instance, baos)
       val functionInBytes = baos.toByteArray
 
@@ -122,11 +129,8 @@ private[hive] case class HiveFunctionWrapper(var functionClassName: String)
     functionClassName = in.readUTF()
 
     if (in.readBoolean()) {
-      // if the instance is not null
-      // read the function in bytes
-      val functionInBytesLength = in.readInt()
-      val functionInBytes = new Array[Byte](functionInBytesLength)
-      in.read(functionInBytes, 0, functionInBytesLength)
+      val functionInBytes = new Array[Byte](in.readInt())
+      in.readFully(functionInBytes)
 
       // deserialize the function object via Hive Utilities
       instance = deserializePlan[AnyRef](new java.io.ByteArrayInputStream(functionInBytes),
@@ -138,14 +142,8 @@ private[hive] case class HiveFunctionWrapper(var functionClassName: String)
     if (instance != null) {
       instance.asInstanceOf[UDFType]
     } else {
-      val func = getContextOrSparkClassLoader
+      getContextOrSparkClassLoader
                    .loadClass(functionClassName).newInstance.asInstanceOf[UDFType]
-      if (!func.isInstanceOf[UDF]) {
-        // We cache the function if it's no the Simple UDF,
-        // as we always have to create new instance for Simple UDF
-        instance = func
-      }
-      func
     }
   }
 }
