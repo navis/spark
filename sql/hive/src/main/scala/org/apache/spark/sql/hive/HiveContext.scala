@@ -464,7 +464,8 @@ class HiveContext(sc: SparkContext) extends SQLContext(sc) {
   }
 
   protected[hive] def runSqlHive(sql: String): Seq[String] = {
-    if (sql.toLowerCase.contains("create temporary function")) {
+    if (sql.toLowerCase.contains("create temporary function") ||
+      sql.toLowerCase.contains("create temporary macro")) {
       executionHive.runSqlHive(sql)
     } else if (sql.trim.toLowerCase.startsWith("set")) {
       metadataHive.runSqlHive(sql)

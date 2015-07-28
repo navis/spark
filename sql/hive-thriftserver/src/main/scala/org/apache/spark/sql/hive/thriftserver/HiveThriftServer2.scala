@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.hive.thriftserver
 
+import java.io.{FileReader, BufferedReader}
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -63,6 +65,46 @@ object HiveThriftServer2 extends Logging {
     }
   }
 
+  def runScript(sqlContext: HiveContext) {
+    val hiveConf = sqlContext.hiveconf
+    val script = hiveConf.get("navis.hiveserver2.init.script", null)
+    if (script != null && !script.isEmpty) {
+      getCommands(script).foreach { c =>
+        try {
+          LOG.warn("Running.. " + c)
+          sqlContext.runSqlHive(c).foreach { o => LOG.warn(o) }
+        } catch {
+          case t: Throwable => LOG.warn("Failed to run command " + c, t)
+        }
+      }
+    }
+  }
+
+  private def getCommands(input: String): Seq[String] = {
+    LOG.warn("Reading script " + input)
+    val reader: BufferedReader = new BufferedReader(new FileReader(input))
+
+    val commands = new mutable.ArrayBuffer[String]
+    val builder = new StringBuilder
+    var line = reader.readLine()
+    while (line != null) {
+      val next = line.trim.endsWith(";")
+      if (next) {
+        line = line.substring(0, line.lastIndexOf(';'))
+      }
+      builder.append(line).append('\n')
+      if (next) {
+        commands += builder.toString
+        builder.setLength(0)
+      }
+      line = reader.readLine()
+    }
+    if (builder.nonEmpty) {
+      commands += builder.toString
+    }
+    commands
+  }
+
   def main(args: Array[String]) {
     val optionsProcessor = new ServerOptionsProcessor("HiveThriftServer2")
     if (!optionsProcessor.process(args)) {
@@ -82,6 +124,7 @@ object HiveThriftServer2 extends Logging {
       server.init(SparkSQLEnv.hiveContext.hiveconf)
       server.start()
       logInfo("HiveThriftServer2 started")
+      runScript(SparkSQLEnv.hiveContext)
       listener = new HiveThriftServer2Listener(server, SparkSQLEnv.hiveContext.conf)
       SparkSQLEnv.sparkContext.addSparkListener(listener)
       uiTab = if (SparkSQLEnv.sparkContext.getConf.getBoolean("spark.ui.enabled", true)) {
