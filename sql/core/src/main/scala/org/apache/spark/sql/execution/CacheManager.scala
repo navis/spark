@@ -74,6 +74,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
 
   /** Clears all cached tables. */
   private[sql] def clearCache(): Unit = writeLock {
+    logWarning("!! clearCache")
     cachedData.foreach(_.cachedRepresentation.cachedColumnBuffers.unpersist())
     cachedData.clear()
   }
@@ -92,6 +93,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
       query: DataFrame,
       tableName: Option[String] = None,
       storageLevel: StorageLevel = MEMORY_AND_DISK): Unit = writeLock {
+    logWarning("!! cacheQuery : " + tableName)
     val planToCache = query.queryExecution.analyzed
     if (lookupCachedData(planToCache).nonEmpty) {
       logWarning("Asked to cache already cached data.")
@@ -113,6 +115,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     val planToCache = query.queryExecution.analyzed
     val dataIndex = cachedData.indexWhere(cd => planToCache.sameResult(cd.plan))
     require(dataIndex >= 0, s"Table $query is not cached.")
+    logWarning("!! uncacheQuery : " + cachedData(dataIndex).cachedRepresentation.tableName.getOrElse("<no-name>"))
     cachedData(dataIndex).cachedRepresentation.uncache(blocking)
     cachedData.remove(dataIndex)
   }
@@ -125,6 +128,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     val dataIndex = cachedData.indexWhere(cd => planToCache.sameResult(cd.plan))
     val found = dataIndex >= 0
     if (found) {
+      logWarning("!! uncacheQuery : " + cachedData(dataIndex).cachedRepresentation.tableName.getOrElse("<no-name>"))
       cachedData(dataIndex).cachedRepresentation.cachedColumnBuffers.unpersist(blocking)
       cachedData.remove(dataIndex)
     }
@@ -138,7 +142,13 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
 
   /** Optionally returns cached data for the given LogicalPlan. */
   private[sql] def lookupCachedData(plan: LogicalPlan): Option[CachedData] = readLock {
-    cachedData.find(cd => plan.sameResult(cd.plan))
+    cachedData.find(cd => {
+      val matched = plan.sameResult(cd.plan)
+      if (matched) {
+        logWarning("!! hit cache : " + cd.cachedRepresentation.tableName.getOrElse("<no-name>"))
+      }
+      matched
+    })
   }
 
   /** Replaces segments of the given logical plan with cached versions where possible. */
