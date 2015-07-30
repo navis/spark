@@ -192,13 +192,28 @@ private[hive] class ClientWrapper(
     }
   }
 
+  private val tableCache: mutable.Map[String, (Long, HiveTable)] =
+    new mutable.HashMap[String, (Long, HiveTable)]
+      with mutable.SynchronizedMap[String, (Long, HiveTable)]
+
+  private val tableCacheRetain = 10000
+
   override def getTableOption(
       dbName: String,
-      tableName: String): Option[HiveTable] = withHiveState {
+      tableName: String): Option[HiveTable] = {
 
     logDebug(s"Looking up $dbName.$tableName")
 
-    val hiveTable = Option(client.getTable(dbName, tableName, false))
+    val key = dbName + "." + tableName
+    var cached: Option[(Long, HiveTable)] = tableCache.get(key)
+    if (cached.isDefined && System.currentTimeMillis() - cached.get._1 < tableCacheRetain) {
+      return Some(cached.get._2)
+    }
+
+    val hiveTable = withHiveState {
+      Option(client.getTable(dbName, tableName, false))
+    }
+
     val converted = hiveTable.map { h =>
 
       HiveTable(
@@ -223,6 +238,9 @@ private[hive] class ClientWrapper(
         serde = Option(h.getSerializationLib),
         viewText = Option(h.getViewExpandedText)).withClient(this)
     }
+    if (converted.isDefined) {
+      tableCache.put(key, (System.currentTimeMillis(), converted.get))
+    }
     converted
   }
 
@@ -234,7 +252,7 @@ private[hive] class ClientWrapper(
       .asInstanceOf[Class[_ <: org.apache.hadoop.hive.ql.io.HiveOutputFormat[_, _]]]
 
   private def toQlTable(table: HiveTable): metadata.Table = {
-    val qlTable = new metadata.Table(table.database, table.name)
+    val qlTable = withHiveState { new metadata.Table(table.database, table.name) }
 
     qlTable.setFields(table.schema.map(c => new FieldSchema(c.name, c.hiveType, c.comment)))
     qlTable.setPartCols(
@@ -308,7 +326,7 @@ private[hive] class ClientWrapper(
   private val partCache: mutable.Map[String, (String, ArrayBuffer[(Array[String], String)])] =
     new mutable.HashMap
 
-  override def getAllPartitions(hTable: HiveTable): Seq[HivePartition] = withHiveState {
+  override def getAllPartitions(hTable: HiveTable): Seq[HivePartition] = {
     val start = System.currentTimeMillis()
     val qlTable = toQlTable(hTable)
     var partitions: Seq[HivePartition] = null
@@ -337,7 +355,9 @@ private[hive] class ClientWrapper(
         case hive.v12 => "getAllPartitionsForPruner"
         case hive.v13 => "getAllPartitionsOf"
       }
-      val qlPartitions = client.call[metadata.Table, JSet[metadata.Partition]](methodName, qlTable)
+      val qlPartitions = withHiveState {
+        client.call[metadata.Table, JSet[metadata.Partition]](methodName, qlTable)
+      }
       partitions = qlPartitions.toSeq.map(toHivePartition)
     }
     logWarning("Took " + (System.currentTimeMillis() - start) + " msec, for " + hTable.name)
