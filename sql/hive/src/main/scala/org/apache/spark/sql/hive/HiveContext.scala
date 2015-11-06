@@ -744,6 +744,19 @@ private[hive] object HiveContext {
     propMap.toMap
   }
 
+  val overriddenConfs: Seq[String] = {
+    val confs = HiveConf.ConfVars.values().toSeq.filter(confvar =>
+      confvar.varname.contains("datanucleus") ||
+      confvar.varname.contains("jdo") ||
+      confvar.varname.contains("hive.metastore.rawstore.impl")).map(_.varname)
+
+    confs ++ Seq(
+      HiveConf.ConfVars.METASTOREWAREHOUSE.varname,
+      HiveConf.ConfVars.METASTORECONNECTURLKEY.varname,
+      "datanucleus.rdbms.datastoreAdapterClassName"
+    )
+  }
+
   protected val primitiveTypes =
     Seq(StringType, IntegerType, LongType, DoubleType, FloatType, BooleanType, ByteType,
       ShortType, DateType, TimestampType, BinaryType)
